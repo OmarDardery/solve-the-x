@@ -1,0 +1,9 @@
+POST http://127.0.0.1:8000/sign-up/professor
+Content-Type: application/json
+
+{
+    "first_name": "John",
+    "last_name": "Doe",
+    "email": "example@gmail.com",
+    "password": "securepassword"
+}
