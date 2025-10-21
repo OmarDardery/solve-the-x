@@ -4,29 +4,31 @@ import (
 	"errors"
 	"time"
 
-	"github.com/OmarDardery/solve-the-x-backend/middleware"
+	jwt_service "github.com/OmarDardery/solve-the-x-backend/jwt_service"
+	mail_service "github.com/OmarDardery/solve-the-x-backend/mail_service"
 	"gorm.io/gorm"
 )
 
 type Student struct {
 	gorm.Model
-	FirstName           string    `json:"first_name"`
-	LastName            string    `json:"last_name"`
-	Email               string    `json:"email" gorm:"unique"`
-	Password            string    `json:"password"`
-	LastChangedPassword time.Time `json:"last_changed_password"`
+	FirstName           string
+	LastName            string
+	Email               string `gorm:"unique"`
+	Password            string
+	LastChangedPassword time.Time
+	Tags                []Tag `gorm:"many2many:student_tags;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Coins               Coins `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }
 
 // Generate JWT for the student
 func (s *Student) GetJWT() (string, error) {
-	return middleware.GenerateJWT(s.ID, s.Email, "student")
+	return jwt_service.GenerateJWT(s.ID, s.Email, "student")
 }
 
 // AuthenticateStudent checks credentials and returns the student if valid
 func AuthenticateStudent(db *gorm.DB, email, password string) (*Student, error) {
 	var student Student
 
-	// Find by email
 	if err := db.Where("email = ?", email).First(&student).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("student not found")
@@ -34,7 +36,6 @@ func AuthenticateStudent(db *gorm.DB, email, password string) (*Student, error) 
 		return nil, err
 	}
 
-	// Check password hash
 	if !CheckPasswordHash(password, student.Password) {
 		return nil, errors.New("invalid credentials")
 	}
@@ -42,7 +43,7 @@ func AuthenticateStudent(db *gorm.DB, email, password string) (*Student, error) 
 	return &student, nil
 }
 
-// CreateStudent registers a new student with hashed password
+// CreateStudent registers a new student and automatically creates a Coins record
 func CreateStudent(db *gorm.DB, firstName, lastName, email, password string) error {
 	var existing Student
 	if err := db.Where("email = ?", email).First(&existing).Error; err == nil {
@@ -64,9 +65,19 @@ func CreateStudent(db *gorm.DB, firstName, lastName, email, password string) err
 		LastChangedPassword: time.Now(),
 	}
 
-	return db.Create(student).Error
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(student).Error; err != nil {
+			return err
+		}
+
+		if err := CreateCoins(tx, student.ID); err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 func (s Student) Notify(subject, content string) error {
-	return middleware.SendNotification(s.Email, subject, content)
+	return mail_service.SendNotification(s.Email, subject, content)
 }

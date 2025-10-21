@@ -4,7 +4,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/OmarDardery/solve-the-x-backend/middleware"
+	jwt_service "github.com/OmarDardery/solve-the-x-backend/jwt_service"
+	mail_service "github.com/OmarDardery/solve-the-x-backend/mail_service"
 	"gorm.io/gorm"
 )
 
@@ -19,7 +20,7 @@ type Professor struct {
 
 // Generate JWT for the professor
 func (p *Professor) GetJWT() (string, error) {
-	return middleware.GenerateJWT(p.ID, p.Email, "professor")
+	return jwt_service.GenerateJWT(p.ID, p.Email, "professor")
 }
 
 // AuthenticateProfessor checks credentials and returns the professor if valid
@@ -68,5 +69,5 @@ func CreateProfessor(db *gorm.DB, firstName, lastName, email, password string) e
 }
 
 func (p Professor) Notify(subject, content string) error {
-	return middleware.SendNotification(p.Email, subject, content)
+	return mail_service.SendNotification(p.Email, subject, content)
 }

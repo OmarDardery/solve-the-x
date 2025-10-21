@@ -1,80 +1,80 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
-	"os"
-	"time"
 
+	"github.com/OmarDardery/solve-the-x-backend/jwt_service"
+	"github.com/OmarDardery/solve-the-x-backend/models"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
-// GenerateJWT creates a signed JWT token with user ID, email, and role
-func GenerateJWT(id uint, email, role string) (string, error) {
-	secretKey := os.Getenv("JWT_SECRET")
-	if secretKey == "" {
-		return "", jwt.ErrInvalidKey
-	}
-
-	claims := jwt.MapClaims{
-		"user_id": id,
-		"email":   email,
-		"role":    role,
-		"exp":     time.Now().Add(time.Hour * 72).Unix(), // expires in 72 hours
-		"iat":     time.Now().Unix(),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(secretKey))
-}
-
-// JWTMiddleware verifies the JWT token in the Authorization header
-func JWTMiddleware() gin.HandlerFunc {
+// JWTMiddleware verifies JWT tokens and attaches user info (role + struct) to the Gin context
+func JWTMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing Authorization header"})
+		if authHeader == "" || len(authHeader) <= 7 || authHeader[:7] != "Bearer " {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing Authorization header"})
 			c.Abort()
 			return
 		}
 
-		// Expected format: "Bearer <token>"
-		var tokenString string
-		if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-			tokenString = authHeader[7:]
-		} else {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization format"})
+		tokenString := authHeader[7:]
+		claims, err := jwt_service.ParseJWT(tokenString)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			c.Abort()
 			return
 		}
 
-		secretKey := os.Getenv("JWT_SECRET")
-		if secretKey == "" {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "JWT secret not configured"})
+		// Extract role from claims
+		role, ok := claims["role"].(string)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid role in token"})
 			c.Abort()
 			return
 		}
 
-		// Parse and validate the token
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, jwt.ErrInvalidKey
+		// Extract user ID
+		idFloat, ok := claims["user_id"].(float64)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID in token"})
+			c.Abort()
+			return
+		}
+		id := uint(idFloat)
+
+		// Fetch user based on role
+		var user interface{}
+		switch role {
+		case "student":
+			var student models.Student
+			if err := db.First(&student, id).Error; err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Student not found"})
+				c.Abort()
+				return
 			}
-			return []byte(secretKey), nil
-		})
+			user = &student
 
-		if err != nil || !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
+		case "professor":
+			var professor models.Professor
+			if err := db.First(&professor, id).Error; err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Professor not found"})
+				c.Abort()
+				return
+			}
+			user = &professor
+
+		default:
+			c.JSON(http.StatusUnauthorized, gin.H{"error": fmt.Sprintf("Invalid role: %s", role)})
 			c.Abort()
 			return
 		}
 
-		// Extract claims and set them into Gin context
-		if claims, ok := token.Claims.(jwt.MapClaims); ok {
-			c.Set("user_id", claims["user_id"])
-			c.Set("email", claims["email"])
-			c.Set("role", claims["role"])
-		}
+		// Store both role and user in context
+		c.Set("role", role)
+		c.Set("user", user)
 
 		c.Next()
 	}

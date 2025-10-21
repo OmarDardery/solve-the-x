@@ -1,0 +1,6 @@
+POST http://127.0.0.1:8000/send-code
+Content-Type: application/json
+
+{
+    "email": "oay782006@gmail.com"
+}
