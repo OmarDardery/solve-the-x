@@ -3,43 +3,52 @@ package mail_service
 import (
 	"fmt"
 	"os"
-	"strconv"
 
-	"gopkg.in/gomail.v2"
+	"github.com/sendgrid/sendgrid-go"
+	"github.com/sendgrid/sendgrid-go/helpers/mail"
 )
 
 func SendVerificationEmail(to, code string) error {
-	host := os.Getenv("EMAIL_HOST")
-	port, _ := strconv.Atoi(os.Getenv("EMAIL_PORT"))
-	user := os.Getenv("EMAIL_USER")
-	pass := os.Getenv("EMAIL_PASS")
+	fromEmail := os.Getenv("SENDER_EMAIL")
+	apiKey := os.Getenv("SENDGRID_API_KEY")
 
-	msg := gomail.NewMessage()
-	msg.SetHeader("From", user)
-	msg.SetHeader("To", to)
-	msg.SetHeader("Subject", "Verify your account")
-	msg.SetBody("text/plain", fmt.Sprintf("Your verification code is: %s", code))
+	from := mail.NewEmail("Solve-The-X", fromEmail)
+	subject := "Verify your account"
+	toEmail := mail.NewEmail("", to)
+	plainTextContent := fmt.Sprintf("Your verification code is: %s", code)
+	htmlContent := fmt.Sprintf("<p>Your verification code is: <b>%s</b></p>", code)
 
-	dialer := gomail.NewDialer(host, port, user, pass)
-	return dialer.DialAndSend(msg)
-}
+	message := mail.NewSingleEmail(from, subject, toEmail, plainTextContent, htmlContent)
+	client := sendgrid.NewSendClient(apiKey)
+	response, err := client.Send(message)
+	if err != nil {
+		return err
+	}
 
-type Reciever interface {
-	GetEmail() string
+	if response.StatusCode >= 400 {
+		return fmt.Errorf("sendgrid error: %d - %s", response.StatusCode, response.Body)
+	}
+
+	return nil
 }
 
 func SendNotification(to, subject, content string) error {
-	host := os.Getenv("EMAIL_HOST")
-	port, _ := strconv.Atoi(os.Getenv("EMAIL_PORT"))
-	user := os.Getenv("EMAIL_USER")
-	pass := os.Getenv("EMAIL_PASS")
+	fromEmail := os.Getenv("SENDER_EMAIL")
+	apiKey := os.Getenv("SENDGRID_API_KEY")
 
-	msg := gomail.NewMessage()
-	msg.SetHeader("From", user)
-	msg.SetHeader("To", to)
-	msg.SetHeader("Subject", subject)
-	msg.SetBody("text/plain", content)
+	from := mail.NewEmail("Solve-The-X", fromEmail)
+	toEmail := mail.NewEmail("", to)
 
-	dialer := gomail.NewDialer(host, port, user, pass)
-	return dialer.DialAndSend(msg)
+	message := mail.NewSingleEmail(from, subject, toEmail, content, "<p>"+content+"</p>")
+	client := sendgrid.NewSendClient(apiKey)
+	response, err := client.Send(message)
+	if err != nil {
+		return err
+	}
+
+	if response.StatusCode >= 400 {
+		return fmt.Errorf("sendgrid error: %d - %s", response.StatusCode, response.Body)
+	}
+
+	return nil
 }

@@ -1,10 +1,10 @@
-POST http://127.0.0.1:8000/sign-up/student
+POST http://127.0.0.1:8000/auth/sign-up/student
 Content-Type: application/json
 
 {
-    "code": 859339,
+    "code": 916217,
     "first_name": "John",
     "last_name": "Doe",
-    "email": "oay782006@gmail.com",
+    "email": "omar71creatorcodefortnite@gmail.com",
     "password": "securepassword"
 }

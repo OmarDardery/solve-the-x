@@ -1,6 +1,6 @@
-POST http://127.0.0.1:8000/send-code
+POST http://127.0.0.1:8000/auth/send-code
 Content-Type: application/json
 
 {
-    "email": "oay782006@gmail.com"
+    "email": "omar71creatorcodefortnite@gmail.com"
 }
