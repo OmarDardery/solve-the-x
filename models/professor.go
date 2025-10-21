@@ -71,3 +71,64 @@ func CreateProfessor(db *gorm.DB, firstName, lastName, email, password string) e
 func (p Professor) Notify(subject, content string) error {
 	return mail_service.SendNotification(p.Email, subject, content)
 }
+
+// GetProfessorByID retrieves a professor by ID
+func GetProfessorByID(db *gorm.DB, id uint) (*Professor, error) {
+	var professor Professor
+	if err := db.First(&professor, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("professor not found")
+		}
+		return nil, err
+	}
+	return &professor, nil
+}
+
+// UpdateProfessor updates a professor’s fields and rehashes password if changed
+func UpdateProfessor(db *gorm.DB, id uint, updates map[string]interface{}) (*Professor, error) {
+	professor, err := GetProfessorByID(db, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle password update
+	if newPasswordRaw, ok := updates["Password"]; ok {
+		newPassword, ok := newPasswordRaw.(string)
+		if !ok {
+			return nil, errors.New("password must be a string")
+		}
+
+		hashed, err := HashPassword(newPassword)
+		if err != nil {
+			return nil, err
+		}
+
+		updates["Password"] = hashed
+		updates["LastChangedPassword"] = time.Now()
+	}
+
+	if err := db.Model(professor).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+
+	// Refresh record
+	if err := db.First(professor, id).Error; err != nil {
+		return nil, err
+	}
+
+	return professor, nil
+}
+
+// DeleteProfessor deletes a professor by ID
+func DeleteProfessor(db *gorm.DB, id uint) error {
+	professor, err := GetProfessorByID(db, id)
+	if err != nil {
+		return err
+	}
+
+	if err := db.Delete(professor).Error; err != nil {
+		return err
+	}
+
+	return nil
+}

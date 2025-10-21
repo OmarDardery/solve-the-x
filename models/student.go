@@ -81,3 +81,65 @@ func CreateStudent(db *gorm.DB, firstName, lastName, email, password string) err
 func (s Student) Notify(subject, content string) error {
 	return mail_service.SendNotification(s.Email, subject, content)
 }
+
+// GetStudentByID retrieves a student by ID with related data (Tags, Coins)
+func GetStudentByID(db *gorm.DB, id uint) (*Student, error) {
+	var student Student
+	if err := db.Preload("Tags").Preload("Coins").First(&student, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("student not found")
+		}
+		return nil, err
+	}
+	return &student, nil
+}
+
+// UpdateStudent updates a student’s fields
+// UpdateStudent updates a student’s fields and rehashes password if changed
+func UpdateStudent(db *gorm.DB, id uint, updates map[string]interface{}) (*Student, error) {
+	student, err := GetStudentByID(db, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if password is being updated
+	if newPasswordRaw, ok := updates["Password"]; ok {
+		newPassword, ok := newPasswordRaw.(string)
+		if !ok {
+			return nil, errors.New("password must be a string")
+		}
+
+		hashed, err := HashPassword(newPassword)
+		if err != nil {
+			return nil, err
+		}
+
+		updates["Password"] = hashed
+		updates["LastChangedPassword"] = time.Now()
+	}
+
+	if err := db.Model(student).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+
+	// Reload with relations
+	if err := db.Preload("Tags").Preload("Coins").First(student, id).Error; err != nil {
+		return nil, err
+	}
+
+	return student, nil
+}
+
+// DeleteStudent deletes a student by ID
+func DeleteStudent(db *gorm.DB, id uint) error {
+	student, err := GetStudentByID(db, id)
+	if err != nil {
+		return err
+	}
+
+	if err := db.Delete(student).Error; err != nil {
+		return err
+	}
+
+	return nil
+}

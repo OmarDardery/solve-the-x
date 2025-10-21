@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/OmarDardery/solve-the-x-backend/database"
 	"github.com/OmarDardery/solve-the-x-backend/middleware"
@@ -36,9 +37,19 @@ func main() {
 		c.JSON(200, gin.H{"message": "pong"})
 	})
 
-	server.POST("/sign-up/:role", routes.SignUpHandler(db, &verificationCodes))
-	server.POST("/sign-in/:role", routes.SignInHandler(db))
-	server.POST("/send-code", routes.SendCodeHandler(db, &verificationCodes))
+	server.GET("/", func(c *gin.Context) {
+		// Path to your PDF file
+		filePath := "./doc.pdf"
+
+		// Set headers
+		c.Header("Content-Type", "application/pdf")
+		c.Header("Content-Disposition", "inline; filename=example.pdf")
+		c.File(filePath)
+	})
+	auth := server.Group("/auth")
+	auth.POST("/sign-up/:role", routes.SignUpHandler(db, &verificationCodes))
+	auth.POST("/sign-in/:role", routes.SignInHandler(db))
+	auth.POST("/send-code", routes.SendCodeHandler(db, &verificationCodes))
 
 	// Protected routes
 	protected := server.Group("/api")
@@ -54,9 +65,14 @@ func main() {
 			"user": user,
 		})
 	})
+	routes.RegisterCRUDRoutes(protected, db)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8000"
+	}
 
 	// Run server
-	if err := server.Run(":8000"); err != nil {
+	if err := server.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }

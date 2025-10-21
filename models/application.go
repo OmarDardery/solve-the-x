@@ -25,3 +25,21 @@ func (s Student) CreateApplication(db *gorm.DB, opportunityID uint) error {
 	}
 	return db.Create(&application).Error
 }
+
+func (s Student) DeleteApplication(db *gorm.DB, opportunityID uint) error {
+	return db.
+		Where("student_id = ? AND opportunity_id = ?", s.ID, opportunityID).
+		Delete(&Application{}).
+		Error
+}
+
+func GetApplicationsByOpportunityID(db *gorm.DB, opportunityID uint) ([]Application, error) {
+	var applications []Application
+	err := db.
+		Preload("Student").
+		Preload("Opportunity").
+		Where("opportunity_id = ?", opportunityID).
+		Find(&applications).
+		Error
+	return applications, err
+}

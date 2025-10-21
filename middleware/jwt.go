@@ -13,69 +13,57 @@ import (
 // JWTMiddleware verifies JWT tokens and attaches user info (role + struct) to the Gin context
 func JWTMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		const bearerPrefix = "Bearer "
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" || len(authHeader) <= 7 || authHeader[:7] != "Bearer " {
+		if len(authHeader) <= len(bearerPrefix) || authHeader[:len(bearerPrefix)] != bearerPrefix {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or missing Authorization header"})
 			c.Abort()
 			return
 		}
 
-		tokenString := authHeader[7:]
+		tokenString := authHeader[len(bearerPrefix):]
 		claims, err := jwt_service.ParseJWT(tokenString)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
 		}
 
-		// Extract role from claims
 		role, ok := claims["role"].(string)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid role in token"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token payload"})
 			c.Abort()
 			return
 		}
 
-		// Extract user ID
 		idFloat, ok := claims["user_id"].(float64)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID in token"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token payload"})
 			c.Abort()
 			return
 		}
 		id := uint(idFloat)
 
-		// Fetch user based on role
 		var user interface{}
 		switch role {
 		case "student":
-			var student models.Student
-			if err := db.First(&student, id).Error; err != nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Student not found"})
-				c.Abort()
-				return
-			}
-			user = &student
-
+			user, err = models.GetStudentByID(db, id)
 		case "professor":
-			var professor models.Professor
-			if err := db.First(&professor, id).Error; err != nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Professor not found"})
-				c.Abort()
-				return
-			}
-			user = &professor
-
+			user, err = models.GetProfessorByID(db, id)
 		default:
 			c.JSON(http.StatusUnauthorized, gin.H{"error": fmt.Sprintf("Invalid role: %s", role)})
 			c.Abort()
 			return
 		}
 
-		// Store both role and user in context
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": fmt.Sprintf("%s not found", role)})
+			c.Abort()
+			return
+		}
+
 		c.Set("role", role)
 		c.Set("user", user)
-
 		c.Next()
 	}
 }
